@@ -17,24 +17,29 @@ const hooks = {
     getInitialPlayerState: () => ({
         x: Math.floor(Math.random() * 700) + 50,
         y: Math.floor(Math.random() * 500) + 50,
-        color: `hsl(${Math.floor(Math.random() * 360)}, 80%, 50%)`
+        color: `hsl(${Math.floor(Math.random() * 360)}, 80%, 50%)`,
+        intent: { UP: false, DOWN: false, LEFT: false, RIGHT: false }
     }),
+    
     applyInput: (state, playerInput) => {
+        state.intent = playerInput.input;
+    },
+    
+    updateState: (state, deltaTime) => {
         const newState = { ...state };
-        const speed = 10;
+        const speed = 200;
         
-        if (playerInput.input === 'UP') newState.y -= speed;
-        if (playerInput.input === 'DOWN') newState.y += speed;
-        if (playerInput.input === 'LEFT') newState.x -= speed;
-        if (playerInput.input === 'RIGHT') newState.x += speed;
+        if (newState.intent?.UP) newState.y -= speed * deltaTime;
+        if (newState.intent?.DOWN) newState.y += speed * deltaTime;
+        if (newState.intent?.LEFT) newState.x -= speed * deltaTime;
+        if (newState.intent?.RIGHT) newState.x += speed * deltaTime;
         
         return newState;
-    },
-    syncState: (state) => state
+    }
 };
 
 new NexusServer(io, hooks);
 
-httpServer.listen(3000, () => {
-    console.log('Test Server running at http://localhost:3000');
+httpServer.listen(8080, () => {
+    console.log('Test Server running at http://localhost:8080')
 });

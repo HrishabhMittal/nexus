@@ -14,6 +14,7 @@ export interface PlayerInput<Input> {
     input: Input;
     timestamp: number;
 }
+
 export interface ClientInputPayload<Input> {
     input: Input;
     timestamp: number;
@@ -21,6 +22,6 @@ export interface ClientInputPayload<Input> {
 
 export interface GameHooks<State, Input> {
     getInitialPlayerState: (playerId: string) => State;
-    applyInput: (state: State, input: PlayerInput<Input>) => State;
-    syncState: (state: State) => State;
+    applyInput: (state: State, input: PlayerInput<Input>) => void;
+    updateState: (state: State, deltaTime: number) => State;
 }

@@ -8,12 +8,29 @@ export class NexusServer<State, Input> {
         players: {},
         timestamp: 0
     };
+    private lastTickTime: number;
 
     constructor(io: Server, hooks: GameHooks<State, Input>) {
         this.io = io;
         this.hooks = hooks;
+        this.lastTickTime = Date.now();
+        
+        setInterval(() => this.tick(), 1000 / 60);
         setInterval(() => this.broadcastState(), 100);
+        
         this.setupRoutes();
+    }
+
+    private tick() {
+        const now = Date.now();
+        const deltaTime = (now - this.lastTickTime) / 1000;
+        this.lastTickTime = now;
+
+        for (const playerId in this.state.players) {
+            const player = this.state.players[playerId];
+            if (!player) continue; // lsp is complaining bruh
+            player.data = this.hooks.updateState(player.data, deltaTime);
+        }
     }
 
     private setupRoutes() {
@@ -49,7 +66,7 @@ export class NexusServer<State, Input> {
         if (!player) return;
 
         if (input.timestamp > player.lastProcessedTimestamp) {
-            player.data = this.hooks.applyInput(player.data, input);
+            this.hooks.applyInput(player.data, input);
             player.lastProcessedTimestamp = input.timestamp;
         }
     }

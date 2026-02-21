@@ -1,23 +1,40 @@
 import { io, Socket } from "socket.io-client";
-import type { WorldState, PlayerInput, ClientInputPayload } from "../core/index.js";
+import type { WorldState, PlayerInput, ClientInputPayload, GameHooks } from "../core/index.js";
 
 export class NexusClient<State, Input> {
     private socket: Socket;
     private state: WorldState<State> | null = null;
-    private updateState: (newInput: PlayerInput<Input>, oldState: WorldState<State>) => void;
+    private hooks: GameHooks<State, Input>;
     
     private pendingInputs: PlayerInput<Input>[] = [];
+    private lastTickTime: number;
 
-    constructor(serverUrl: string, updateState: (newInput: PlayerInput<Input>, oldState: WorldState<State>) => void) {
+    constructor(serverUrl: string, hooks: GameHooks<State, Input>) {
         this.socket = io(serverUrl);
-        this.updateState = updateState;
+        this.hooks = hooks;
+        this.lastTickTime = Date.now();
         this.setupListeners();
+        setInterval(() => this.tick(), 1000 / 60);
+    }
+
+    private tick() {
+        if (!this.state) return;
+        const now = Date.now();
+        const deltaTime = (now - this.lastTickTime) / 1000;
+        this.lastTickTime = now;
+
+        for (const playerId in this.state.players) {
+            const player = this.state.players[playerId];
+            if (!player) continue; // lsp bruh
+            player.data = this.hooks.updateState(player.data, deltaTime);
+        }
     }
 
     private setupListeners() {
         this.socket.on("connect", () => {
             console.log("Connected to Game Server");
         });
+        
         this.socket.on("stateSync", (newState: WorldState<State>) => {
             this.state = newState;
             const myId = this.socket.id;
@@ -26,15 +43,21 @@ export class NexusClient<State, Input> {
             const myPlayer = this.state.players[myId];
             if (myPlayer) {
                 const lastProcessed = myPlayer.lastProcessedTimestamp;
+                
                 this.pendingInputs = this.pendingInputs.filter(p => p.timestamp > lastProcessed);
+                
                 for (const pending of this.pendingInputs) {
-                    this.updateState(pending, this.state);
+                    this.hooks.applyInput(myPlayer.data, pending);
                 }
             }
         });
 
         this.socket.on("stateUpdate", (newInput: PlayerInput<Input>) => {
-            if (this.state) this.updateState(newInput, this.state);
+            if (!this.state) return;
+            const player = this.state.players[newInput.id];
+            if (player) {
+                this.hooks.applyInput(player.data, newInput);
+            }
         });
     }
 
@@ -48,8 +71,8 @@ export class NexusClient<State, Input> {
         const playerInput: PlayerInput<Input> = { id: myId, input, timestamp };
         this.pendingInputs.push(playerInput);
 
-        if (this.state) {
-            this.updateState(playerInput, this.state);
+        if (this.state && this.state.players[myId]) {
+            this.hooks.applyInput(this.state.players[myId].data, playerInput);
         }
     }
 
