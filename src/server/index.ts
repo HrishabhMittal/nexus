@@ -9,27 +9,43 @@ export class NexusServer<State, Input> {
         timestamp: 0
     };
     private lastTickTime: number;
-
+    private inputBuffer: PlayerInput<Input>[];
+    private buffered: number;
     constructor(io: Server, hooks: GameHooks<State, Input>) {
         this.io = io;
         this.hooks = hooks;
         this.lastTickTime = Date.now();
-        
+        this.inputBuffer = new Array(200);
+        this.buffered = 0;
         setInterval(() => this.tick(), 1000 / 60);
         setInterval(() => this.broadcastState(), 100);
         
         this.setupRoutes();
     }
-
+    private flushInputBuffer() {
+        if (this.buffered > 0) {
+            const batch = this.inputBuffer.slice(0, this.buffered);
+            this.io.emit("stateUpdate", batch);
+            this.buffered = 0;
+        }
+    }
     private tick() {
+        const startTime = performance.now();
         const now = Date.now();
         const deltaTime = (now - this.lastTickTime) / 1000;
         this.lastTickTime = now;
-
+        
         for (const playerId in this.state.players) {
             const player = this.state.players[playerId];
-            if (!player) continue; // lsp is complaining bruh
+            if (!player) continue; 
             player.data = this.hooks.updateState(player.data, deltaTime);
+        }
+        this.flushInputBuffer();
+        const executionTime = performance.now() - startTime;
+        if (executionTime > 5) {
+            console.warn(`[Performance Warning] Tick took ${executionTime.toFixed(2)}ms`);
+        } else {
+            console.log(`[Performance Stable] Tick took ${executionTime.toFixed(2)}ms`);
         }
     }
 
@@ -51,7 +67,10 @@ export class NexusServer<State, Input> {
                 };
                 
                 this.handleInput(socket.id, playerInput);
-                socket.broadcast.emit("stateUpdate", playerInput);
+                this.inputBuffer[this.buffered++]=playerInput;
+                if (this.buffered>=200) {
+                    this.flushInputBuffer();
+                }
             });
 
             socket.on("disconnect", () => {

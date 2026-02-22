@@ -52,11 +52,14 @@ export class NexusClient<State, Input> {
             }
         });
 
-        this.socket.on("stateUpdate", (newInput: PlayerInput<Input>) => {
+        this.socket.on("stateUpdate", (newInputs: PlayerInput<Input>[]) => {
             if (!this.state) return;
-            const player = this.state.players[newInput.id];
-            if (player) {
-                this.hooks.applyInput(player.data, newInput);
+            for (const newInput of newInputs) {
+                if (newInput.id === this.socket.id) continue;
+                const player = this.state.players[newInput.id];
+                if (player) {
+                    this.hooks.applyInput(player.data, newInput);
+                }
             }
         });
     }

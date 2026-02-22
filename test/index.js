@@ -10,7 +10,7 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer);
 
-app.use(express.static(join(__dirname, 'public')));
+app.use(express.static(join(__dirname, 'game/public')));
 app.use('/dist', express.static(join(__dirname, '../dist')));
 
 const hooks = {
