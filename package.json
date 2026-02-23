@@ -4,7 +4,8 @@
   "description": "",
   "main": "dist/core/index.js",
   "scripts": {
-    "build": "tsc",
+    "proto:gen": "protoc --plugin=./node_modules/.bin/protoc-gen-ts_proto --ts_proto_out=./src schema/*.proto",
+    "build": "npm run proto:gen && tsc",
     "test": "node test/index.js",
     "stress": "node test/stress/stress.js"
   },
@@ -19,12 +20,15 @@
   "type": "module",
   "dependencies": {
     "@geckos.io/client": "^3.0.2",
-    "@geckos.io/server": "^3.0.2"
+    "@geckos.io/server": "^3.0.2",
+    "google-protobuf": "^4.0.1"
   },
   "devDependencies": {
+    "@types/google-protobuf": "^3.15.12",
     "@types/node": "^25.3.0",
     "express": "^5.2.1",
     "node-datachannel": "^0.32.1",
+    "ts-proto": "^2.11.2",
     "typescript": "^5.9.3"
   }
 }

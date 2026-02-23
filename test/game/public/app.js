@@ -3,6 +3,9 @@ import { NexusClient } from '/dist/client/index.js';
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
 const hooks = {
     getInitialPlayerState: () => ({}),
     applyInput: (state, playerInput) => {
@@ -18,7 +21,12 @@ const hooks = {
         if (newState.intent?.RIGHT) newState.x += speed * deltaTime;
         
         return newState;
-    }
+    },
+
+    encodeState: (state) => encoder.encode(JSON.stringify(state)),
+    decodeState: (buffer) => JSON.parse(decoder.decode(buffer)),
+    encodeInput: (input) => encoder.encode(JSON.stringify(input)),
+    decodeInput: (buffer) => JSON.parse(decoder.decode(buffer))
 };
 
 const geckosUrl = `${window.location.protocol}//${window.location.hostname}`;
@@ -53,7 +61,7 @@ function render() {
     if (state && state.players) {
         for (const id in state.players) {
             const p = state.players[id].data;
-            ctx.fillStyle = p.color;
+            ctx.fillStyle = p.color || 'white';
             ctx.fillRect(p.x, p.y, 40, 40);
             
             if (id === myId) {

@@ -1,5 +1,11 @@
 import geckos, { type ClientChannel } from '@geckos.io/client';
 import type { WorldState, PlayerInput, ClientInputPayload, GameHooks } from "../core/index.js";
+import { 
+    ServerMessage, 
+    ClientMessage, 
+    ServerMessage_Type, 
+    ClientMessage_Type 
+} from "../schema/nexus.js";
 
 export class NexusClient<State, Input> {
     private channel: ClientChannel;
@@ -40,41 +46,62 @@ export class NexusClient<State, Input> {
         });
         
         this.channel.onRaw((data: unknown) => {
-            if (!data || typeof data === 'string') return;
+            if (!(data instanceof ArrayBuffer) && !ArrayBuffer.isView(data)) return;
             
-            const messageString = new TextDecoder().decode(data as any);
-            
-            const parsed = JSON.parse(messageString);
-                   
-            if (parsed.e === "S") {
-                const newState = parsed.d as WorldState<State>;
-                this.state = newState;
+            try {
+                const buffer = new Uint8Array(data as ArrayBuffer);
+                const parsed = ServerMessage.decode(buffer);
                 
-                const myId = this.channel.id;
-                if (!myId) return;
+                if (parsed.type === ServerMessage_Type.SYNC && parsed.state) {
+                    const newPlayers: Record<string, any> = {};
+                    
+                    for (const pid in parsed.state.players) {
+                        const p = parsed.state.players[pid];
+                        if (!p) continue;
+                        newPlayers[pid] = {
+                            id: p.id,
+                            data: this.hooks.decodeState(p.data),
+                            lastProcessedTimestamp: p.lastProcessedTimestamp
+                        };
+                    }
+                    
+                    this.state = {
+                        players: newPlayers,
+                        timestamp: parsed.state.timestamp
+                    };
+                    
+                    const myId = this.channel.id;
+                    if (!myId) return;
 
-                const myPlayer = this.state.players[myId];
-                if (myPlayer) {
-                    const lastProcessed = myPlayer.lastProcessedTimestamp;
+                    const myPlayer = this.state.players[myId];
+                    if (myPlayer) {
+                        const lastProcessed = myPlayer.lastProcessedTimestamp;
+                        this.pendingInputs = this.pendingInputs.filter(p => p.timestamp > lastProcessed);
+                        
+                        for (const pending of this.pendingInputs) {
+                            this.hooks.applyInput(myPlayer.data, pending);
+                        }
+                    }
+                } 
+                else if (parsed.type === ServerMessage_Type.UPDATE && parsed.update) {
+                    if (!this.state || !parsed.update.inputs) return;
                     
-                    this.pendingInputs = this.pendingInputs.filter(p => p.timestamp > lastProcessed);
-                    
-                    for (const pending of this.pendingInputs) {
-                        this.hooks.applyInput(myPlayer.data, pending);
+                    for (const rawInput of parsed.update.inputs) {
+                        if (rawInput.id === this.channel.id) continue;
+                        
+                        const player = this.state.players[rawInput.id];
+                        if (player) {
+                            const decodedInput = this.hooks.decodeInput(rawInput.input);
+                            this.hooks.applyInput(player.data, {
+                                id: rawInput.id,
+                                input: decodedInput,
+                                timestamp: rawInput.timestamp
+                            });
+                        }
                     }
                 }
-            } 
-            else if (parsed.e === "U") {
-                const newInputs = parsed.d as PlayerInput<Input>[];
-                if (!this.state) return;
-                
-                for (const newInput of newInputs) {
-                    if (newInput.id === this.channel.id) continue;
-                    const player = this.state.players[newInput.id];
-                    if (player) {
-                        this.hooks.applyInput(player.data, newInput);
-                    }
-                }
+            } catch (err) {
+                console.error("Failed to parse ServerMessage:", err);
             }
         });
 
@@ -89,11 +116,17 @@ export class NexusClient<State, Input> {
         if (!myId) return;
 
         const timestamp = Date.now();
-        const payload: ClientInputPayload<Input> = { input, timestamp };
+        const encodedInput = this.hooks.encodeInput(input);
         
-        const rawMessage = JSON.stringify({ e: "I", d: payload });
+        const message = ClientMessage.create({
+            type: ClientMessage_Type.INPUT,
+            input: {
+                input: encodedInput,
+                timestamp: timestamp
+            }
+        });
         
-        const binary = new TextEncoder().encode(rawMessage);
+        const binary = ClientMessage.encode(message).finish();
         this.channel.raw.emit(binary);
         
         const playerInput: PlayerInput<Input> = { id: myId, input, timestamp };

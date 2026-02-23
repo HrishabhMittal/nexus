@@ -1,5 +1,12 @@
 import geckos, { type GeckosServer, type ServerChannel } from '@geckos.io/server';
 import type { GameHooks, PlayerInput, WorldState, ClientInputPayload } from "../core/index.js";
+import { 
+    ServerMessage, 
+    ClientMessage, 
+    ServerMessage_Type, 
+    ClientMessage_Type, 
+    Player as ProtoPlayer 
+} from "../schema/nexus.js"; 
 
 export class NexusServer<State, Input> {
     private io: GeckosServer;
@@ -31,10 +38,17 @@ export class NexusServer<State, Input> {
 
     private flushInputBuffer() {
         if (this.buffered > 0) {
-            const batch = this.inputBuffer.slice(0, this.buffered);
+            const batch = this.inputBuffer.slice(0, this.buffered).map(p => ({
+                id: p.id,
+                input: this.hooks.encodeInput(p.input),
+                timestamp: p.timestamp
+            }));
             
-            const rawMessage = JSON.stringify({ e: "U", d: batch });
-            const binary = new TextEncoder().encode(rawMessage);
+            const message = ServerMessage.create({
+                type: ServerMessage_Type.UPDATE,
+                update: { inputs: batch }
+            });
+            const binary = ServerMessage.encode(message).finish();
             
             setTimeout(() => {
                 this.io.raw.emit(binary);
@@ -64,16 +78,36 @@ export class NexusServer<State, Input> {
         }
     }
 
+    private serializeState(): Record<string, ProtoPlayer> {
+        const serializedPlayers: Record<string, ProtoPlayer> = {};
+        for (const pid in this.state.players) {
+            const p = this.state.players[pid];
+            if (!p) continue;
+            serializedPlayers[pid] = ProtoPlayer.create({
+                id: p.id,
+                data: this.hooks.encodeState(p.data),
+                lastProcessedTimestamp: p.lastProcessedTimestamp
+            });
+        }
+        return serializedPlayers;
+    }
+
     private setupRoutes() {
         this.io.onConnection((channel: ServerChannel) => {
             const { id } = channel;
-            
             if (!id) return;
             
             console.log(`Player connected: ${id}`);
             
-            const initialSync = JSON.stringify({ e: "S", d: this.state });
-            const binarySync = new TextEncoder().encode(initialSync);
+            const syncMessage = ServerMessage.create({
+                type: ServerMessage_Type.SYNC,
+                state: {
+                    players: this.serializeState(),
+                    timestamp: this.state.timestamp
+                }
+            });
+            const binarySync = ServerMessage.encode(syncMessage).finish();
+            
             setTimeout(() => {
                 channel.raw.emit(binarySync);
             }, 0);
@@ -85,27 +119,30 @@ export class NexusServer<State, Input> {
             };
 
             channel.onRaw((data: unknown) => {
-                if (!data || typeof data === 'string') return;
+                if (!(data instanceof ArrayBuffer) && !ArrayBuffer.isView(data)) return;
                 
-                const messageString = new TextDecoder().decode(data as any);
-                
-                const parsed = JSON.parse(messageString);
-                
-                if (parsed.e === "I") {
-                    const payload = parsed.d as ClientInputPayload<Input>;
+                try {
+                    const buffer = new Uint8Array(data as ArrayBuffer);
+                    const parsed = ClientMessage.decode(buffer);
                     
-                    const playerInput: PlayerInput<Input> = { 
-                        id: id, 
-                        input: payload.input,
-                        timestamp: payload.timestamp
-                    };
-                    
-                    this.handleInput(id, playerInput);
-                    this.inputBuffer[this.buffered++] = playerInput;
-                    
-                    if (this.buffered >= 200) {
-                        this.flushInputBuffer();
+                    if (parsed.type === ClientMessage_Type.INPUT && parsed.input) {
+                        const decodedInput = this.hooks.decodeInput(parsed.input.input);
+                        
+                        const playerInput: PlayerInput<Input> = { 
+                            id: id, 
+                            input: decodedInput,
+                            timestamp: parsed.input.timestamp
+                        };
+                        
+                        this.handleInput(id, playerInput);
+                        this.inputBuffer[this.buffered++] = playerInput;
+                        
+                        if (this.buffered >= 200) {
+                            this.flushInputBuffer();
+                        }
                     }
+                } catch (err) {
+                    console.error("Failed to parse ClientMessage:", err);
                 }
             });
 
@@ -129,8 +166,14 @@ export class NexusServer<State, Input> {
     private broadcastState() {
         this.state.timestamp = Date.now();
         
-        const rawMessage = JSON.stringify({ e: "S", d: this.state });
-        const binary = new TextEncoder().encode(rawMessage);
+        const message = ServerMessage.create({
+            type: ServerMessage_Type.SYNC,
+            state: {
+                players: this.serializeState(),
+                timestamp: this.state.timestamp
+            }
+        });
+        const binary = ServerMessage.encode(message).finish();
         
         setTimeout(() => {
             this.io.raw.emit(binary);

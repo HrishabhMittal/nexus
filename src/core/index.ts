@@ -24,4 +24,9 @@ export interface GameHooks<State, Input> {
     getInitialPlayerState: (playerId: string) => State;
     applyInput: (state: State, input: PlayerInput<Input>) => void;
     updateState: (state: State, deltaTime: number) => State;
+    
+    encodeState: (state: State) => Uint8Array;
+    decodeState: (buffer: Uint8Array) => State;
+    encodeInput: (input: Input) => Uint8Array;
+    decodeInput: (buffer: Uint8Array) => Input;
 }

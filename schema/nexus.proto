@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package nexus;
+
+
+message Player {
+  string id = 1;
+  bytes data = 2;
+  double lastProcessedTimestamp = 3;
+}
+
+message WorldState {
+  map<string, Player> players = 1;
+  double timestamp = 2;
+}
+
+message PlayerInput {
+  string id = 1;
+  bytes input = 2;
+  double timestamp = 3;
+}
+
+message ClientInputPayload {
+  bytes input = 1;
+  double timestamp = 2;
+}
+
+message UpdateBatch {
+  repeated PlayerInput inputs = 1;
+}
+
+
+message ServerMessage {
+  enum Type {
+    UNKNOWN_SERVER = 0;
+    SYNC = 1;
+    UPDATE = 2;
+  }
+  Type type = 1;
+  
+  oneof payload {
+    WorldState state = 2;
+    UpdateBatch update = 3;
+  }
+}
+
+message ClientMessage {
+  enum Type {
+    UNKNOWN_CLIENT = 0;
+    INPUT = 1;
+  }
+  Type type = 1;
+  
+  oneof payload {
+    ClientInputPayload input = 2;
+  }
+}

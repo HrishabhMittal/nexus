@@ -11,6 +11,9 @@ const httpServer = createServer(app);
 app.use(express.static(join(__dirname, 'game/public')));
 app.use('/dist', express.static(join(__dirname, '../dist')));
 
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
 const hooks = {
     getInitialPlayerState: () => ({
         x: Math.floor(Math.random() * 700) + 50,
@@ -33,7 +36,12 @@ const hooks = {
         if (newState.intent?.RIGHT) newState.x += speed * deltaTime;
         
         return newState;
-    }
+    },
+
+    encodeState: (state) => encoder.encode(JSON.stringify(state)),
+    decodeState: (buffer) => JSON.parse(decoder.decode(buffer)),
+    encodeInput: (input) => encoder.encode(JSON.stringify(input)),
+    decodeInput: (buffer) => JSON.parse(decoder.decode(buffer))
 };
 
 new NexusServer(hooks, 9208);

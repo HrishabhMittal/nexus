@@ -10,6 +10,9 @@ const GECKOS_PORT = 9208;
 const NUM_CLIENTS = 100;
 const INPUT_INTERVAL_MS = 50;
 
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
 const headlessHooks = {
     getInitialPlayerState: () => ({ x: 0, y: 0, intent: {} }),
     applyInput: (state, playerInput) => {
@@ -17,7 +20,12 @@ const headlessHooks = {
     },
     updateState: (state, deltaTime) => {
         return state; 
-    }
+    },
+
+    encodeState: (state) => encoder.encode(JSON.stringify(state)),
+    decodeState: (buffer) => JSON.parse(decoder.decode(buffer)),
+    encodeInput: (input) => encoder.encode(JSON.stringify(input)),
+    decodeInput: (buffer) => JSON.parse(decoder.decode(buffer))
 };
 
 console.log(`Spawning ${NUM_CLIENTS} headless clients...`);
