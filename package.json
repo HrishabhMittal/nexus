@@ -18,13 +18,13 @@
   "license": "MIT",
   "type": "module",
   "dependencies": {
-    "socket.io": "^4.8.3",
-    "socket.io-client": "^4.8.3"
+    "@geckos.io/client": "^3.0.2",
+    "@geckos.io/server": "^3.0.2"
   },
   "devDependencies": {
     "@types/node": "^25.3.0",
-    "@types/socket.io": "^3.0.1",
     "express": "^5.2.1",
+    "node-datachannel": "^0.32.1",
     "typescript": "^5.9.3"
   }
 }

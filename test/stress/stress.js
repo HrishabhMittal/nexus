@@ -1,7 +1,13 @@
 import { NexusClient } from '../../dist/client/index.js';
 
-const SERVER_URL = 'http://localhost:8080';
-const NUM_CLIENTS = 150;
+import { RTCPeerConnection, RTCSessionDescription, RTCIceCandidate } from 'node-datachannel/polyfill';
+globalThis.RTCPeerConnection = RTCPeerConnection;
+globalThis.RTCSessionDescription = RTCSessionDescription;
+globalThis.RTCIceCandidate = RTCIceCandidate;
+
+const SERVER_URL = 'http://127.0.0.1';
+const GECKOS_PORT = 9208;
+const NUM_CLIENTS = 100;
 const INPUT_INTERVAL_MS = 50;
 
 const headlessHooks = {
@@ -13,12 +19,14 @@ const headlessHooks = {
         return state; 
     }
 };
+
 console.log(`Spawning ${NUM_CLIENTS} headless clients...`);
 const clients = [];
 
 for (let i = 0; i < NUM_CLIENTS; i++) {
-    const client = new NexusClient(SERVER_URL, headlessHooks);
+    const client = new NexusClient(SERVER_URL, headlessHooks, GECKOS_PORT);
     clients.push(client);
+    
     setInterval(() => {
         const intents = ['UP', 'DOWN', 'LEFT', 'RIGHT'];
         const randomIntent = intents[Math.floor(Math.random() * intents.length)];
@@ -35,5 +43,5 @@ setInterval(() => {
     const now = Date.now();
     const activeConnections = clients.filter(c => c.getState() !== null).length;
     
-    console.log(`[Stress Test] Active Clients: ${activeConnections}/${NUM_CLIENTS} | Uptime: ${(now - lastLog) / 1000}s`);
+    console.log(`[Stress Test] Active WebRTC Channels: ${activeConnections}/${NUM_CLIENTS} | Uptime: ${(now - lastLog) / 1000}s`);
 }, 2000);

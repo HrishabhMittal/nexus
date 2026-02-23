@@ -3,7 +3,6 @@ import { NexusClient } from '/dist/client/index.js';
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
-
 const hooks = {
     getInitialPlayerState: () => ({}),
     applyInput: (state, playerInput) => {
@@ -22,8 +21,8 @@ const hooks = {
     }
 };
 
-const client = new NexusClient(window.location.origin, hooks);
-
+const geckosUrl = `${window.location.protocol}//${window.location.hostname}`;
+const client = new NexusClient(geckosUrl, hooks);
 
 const currentIntent = { UP: false, DOWN: false, LEFT: false, RIGHT: false };
 

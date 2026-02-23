@@ -1,6 +1,5 @@
 import express from 'express';
 import { createServer } from 'http';
-import { Server } from 'socket.io';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { NexusServer } from '../dist/server/index.js';
@@ -8,7 +7,6 @@ import { NexusServer } from '../dist/server/index.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const httpServer = createServer(app);
-const io = new Server(httpServer);
 
 app.use(express.static(join(__dirname, 'game/public')));
 app.use('/dist', express.static(join(__dirname, '../dist')));
@@ -38,8 +36,9 @@ const hooks = {
     }
 };
 
-new NexusServer(io, hooks);
+new NexusServer(hooks, 9208);
 
 httpServer.listen(8080, () => {
-    console.log('Test Server running at http://localhost:8080')
+    console.log('HTTP Static Server running at http://localhost:8080');
+    console.log('Geckos WebRTC Signaling running on port 9208');
 });

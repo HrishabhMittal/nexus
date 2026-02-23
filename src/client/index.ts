@@ -1,16 +1,16 @@
-import { io, Socket } from "socket.io-client";
+import geckos, { type ClientChannel } from '@geckos.io/client';
 import type { WorldState, PlayerInput, ClientInputPayload, GameHooks } from "../core/index.js";
 
 export class NexusClient<State, Input> {
-    private socket: Socket;
+    private channel: ClientChannel;
     private state: WorldState<State> | null = null;
     private hooks: GameHooks<State, Input>;
     
     private pendingInputs: PlayerInput<Input>[] = [];
     private lastTickTime: number;
 
-    constructor(serverUrl: string, hooks: GameHooks<State, Input>) {
-        this.socket = io(serverUrl);
+    constructor(url: string, hooks: GameHooks<State, Input>, port: number = 9208) {
+        this.channel = geckos({ url, port }); 
         this.hooks = hooks;
         this.lastTickTime = Date.now();
         this.setupListeners();
@@ -25,52 +25,77 @@ export class NexusClient<State, Input> {
 
         for (const playerId in this.state.players) {
             const player = this.state.players[playerId];
-            if (!player) continue; // lsp bruh
+            if (!player) continue; 
             player.data = this.hooks.updateState(player.data, deltaTime);
         }
     }
 
     private setupListeners() {
-        this.socket.on("connect", () => {
-            console.log("Connected to Game Server");
+        this.channel.onConnect((error) => {
+            if (error) {
+                console.error("Geckos connection error:", error.message);
+                return;
+            }
+            console.log("Connected to Game Server with ID:", this.channel.id);
         });
         
-        this.socket.on("stateSync", (newState: WorldState<State>) => {
-            this.state = newState;
-            const myId = this.socket.id;
-            if (!myId) return;
+        this.channel.onRaw((data: unknown) => {
+            if (!data || typeof data === 'string') return;
+            
+            const messageString = new TextDecoder().decode(data as any);
+            
+            const parsed = JSON.parse(messageString);
+                   
+            if (parsed.e === "S") {
+                const newState = parsed.d as WorldState<State>;
+                this.state = newState;
+                
+                const myId = this.channel.id;
+                if (!myId) return;
 
-            const myPlayer = this.state.players[myId];
-            if (myPlayer) {
-                const lastProcessed = myPlayer.lastProcessedTimestamp;
+                const myPlayer = this.state.players[myId];
+                if (myPlayer) {
+                    const lastProcessed = myPlayer.lastProcessedTimestamp;
+                    
+                    this.pendingInputs = this.pendingInputs.filter(p => p.timestamp > lastProcessed);
+                    
+                    for (const pending of this.pendingInputs) {
+                        this.hooks.applyInput(myPlayer.data, pending);
+                    }
+                }
+            } 
+            else if (parsed.e === "U") {
+                const newInputs = parsed.d as PlayerInput<Input>[];
+                if (!this.state) return;
                 
-                this.pendingInputs = this.pendingInputs.filter(p => p.timestamp > lastProcessed);
-                
-                for (const pending of this.pendingInputs) {
-                    this.hooks.applyInput(myPlayer.data, pending);
+                for (const newInput of newInputs) {
+                    if (newInput.id === this.channel.id) continue;
+                    const player = this.state.players[newInput.id];
+                    if (player) {
+                        this.hooks.applyInput(player.data, newInput);
+                    }
                 }
             }
         });
 
-        this.socket.on("stateUpdate", (newInputs: PlayerInput<Input>[]) => {
-            if (!this.state) return;
-            for (const newInput of newInputs) {
-                if (newInput.id === this.socket.id) continue;
-                const player = this.state.players[newInput.id];
-                if (player) {
-                    this.hooks.applyInput(player.data, newInput);
-                }
-            }
+        this.channel.onDisconnect(() => {
+            console.log("Disconnected from Game Server");
+            this.state = null;
         });
     }
 
     public sendInput(input: Input) {
+        const myId = this.channel.id;
+        if (!myId) return;
+
         const timestamp = Date.now();
         const payload: ClientInputPayload<Input> = { input, timestamp };
-        const myId = this.socket.id;
-        if (!myId) return;
         
-        this.socket.emit("input", payload);
+        const rawMessage = JSON.stringify({ e: "I", d: payload });
+        
+        const binary = new TextEncoder().encode(rawMessage);
+        this.channel.raw.emit(binary);
+        
         const playerInput: PlayerInput<Input> = { id: myId, input, timestamp };
         this.pendingInputs.push(playerInput);
 
@@ -84,6 +109,6 @@ export class NexusClient<State, Input> {
     }
 
     public getPlayerId() {
-        return this.socket.id;
+        return this.channel.id;
     }
 }
